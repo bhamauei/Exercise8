@@ -1,0 +1,178 @@
+---
+title: "Exercise08"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+library(tidyverse)
+install.packages("skimr")
+library(skimr)
+
+url <- "https://raw.githubusercontent.com/difiore/ada-datasets/main/Street_et_al_2017.csv" 
+
+d <- read_csv(url)
+
+skim(d)
+
+ggplot(d, aes(x = Group_size, y = ECV)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Brain Size vs Social Group Size", x = "Group Size", y = "Brain Size (ECV)")
+
+ggplot(d, aes(x = Longevity, y = ECV)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Brain Size vs Longevity", x = "Longevity", y = "Brain Size (ECV)")
+
+ggplot(d, aes(x = Weaning, y = ECV)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Brain Size vs Juvenile Period Length", x = "Juvenile Period Length (Weaning)", y = "Brain Size (ECV)")
+
+ggplot(d, aes(x = Repro_lifespan, y = ECV)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Brain Size vs Reproductive Lifespan", x = "Reproductive Lifespan", y = "Brain Size (ECV)")
+
+d_clean <- d %>% drop_na(ECV, Group_size)
+
+x_bar <- mean(d_clean$Group_size)
+y_bar <- mean(d_clean$ECV)
+
+numerator <- sum((d_clean$Group_size - x_bar) * (d_clean$ECV - y_bar))
+denominator <- sum((d_clean$Group_size - x_bar)^2)
+beta_1 <- numerator / denominator
+
+beta_0 <- y_bar - beta_1 * x_bar
+
+list(intercept = beta_0, slope = beta_1)
+
+analyze_taxonomic_group <- function(df, group) {
+  df_filtered <- df %>% filter(Taxonomic_group == group) %>% drop_na(ECV, Group_size)
+  
+  print(paste("Checking group:", group))  
+  print(nrow(df_filtered))  
+  
+  if (nrow(df_filtered) == 0) {
+    return(paste("No data available for", group))
+  }
+  
+  x_bar <- mean(df_filtered$Group_size)
+  y_bar <- mean(df_filtered$ECV)
+  
+  numerator <- sum((df_filtered$Group_size - x_bar) * (df_filtered$ECV - y_bar))
+  denominator <- sum((df_filtered$Group_size - x_bar)^2)
+  beta_1 <- numerator / denominator
+  beta_0 <- y_bar - beta_1 * x_bar
+  
+  list(group = group, intercept = beta_0, slope = beta_1)
+}
+
+n <- nrow(d_clean)
+y_hat <- beta_0 + beta_1 * d_clean$Group_size
+residuals <- d_clean$ECV - y_hat
+s_squared <- sum(residuals^2) / (n - 2)
+se_beta_1 <- sqrt(s_squared / sum((d_clean$Group_size - x_bar)^2))
+
+alpha <- 0.05
+t_critical <- qt(1 - alpha/2, df = n - 2)
+ci_lower <- beta_1 - t_critical * se_beta_1
+ci_upper <- beta_1 + t_critical * se_beta_1
+
+t_stat <- beta_1 / se_beta_1
+p_value <- 2 * (1 - pt(abs(t_stat), df = n - 2))
+
+list(
+  intercept = beta_0,
+  slope = beta_1,
+  standard_error = se_beta_1,
+  confidence_interval = c(ci_lower, ci_upper),
+  p_value = p_value
+)
+
+lm_model <- lm(ECV ~ Group_size, data = d_clean)
+summary(lm_model)
+
+set.seed(123)  n_permutations <- 1000
+permuted_slopes <- numeric(n_permutations)
+
+for (i in 1:n_permutations) {
+  d_permuted <- d_clean %>% mutate(ECV = sample(ECV)) 
+  permuted_model <- lm(ECV ~ Group_size, data = d_permuted)
+  permuted_slopes[i] <- coef(permuted_model)[2]
+}
+
+p_value_perm <- mean(abs(permuted_slopes) >= abs(beta_1))
+
+se_perm <- sd(permuted_slopes)
+
+ci_perm <- quantile(permuted_slopes, probs = c(0.025, 0.975))
+
+list(
+  permutation_p_value = p_value_perm,
+  permutation_standard_error = se_perm,
+  permutation_confidence_interval = ci_perm
+)
+
+set.seed(123)
+n_bootstrap <- 1000
+boot_slopes <- numeric(n_bootstrap)
+
+for (i in 1:n_bootstrap) {
+  d_boot <- d_clean %>% sample_n(n, replace = TRUE)    boot_model <- lm(ECV ~ Group_size, data = d_boot)
+  boot_slopes[i] <- coef(boot_model)[2]
+}
+
+ci_boot_quantile <- quantile(boot_slopes, probs = c(0.025, 0.975))
+
+se_boot <- sd(boot_slopes)
+ci_boot_theory <- c(beta_1 - t_critical * se_boot, beta_1 + t_critical * se_boot)
+
+ci_includes_zero <- (ci_boot_quantile[1] <= 0 & ci_boot_quantile[2] >= 0) ||
+  (ci_boot_theory[1] <= 0 & ci_boot_theory[2] >= 0)
+
+list(
+  bootstrap_confidence_interval_quantile = ci_boot_quantile,
+  bootstrap_confidence_interval_theory = ci_boot_theory,
+  bootstrap_standard_error = se_boot,
+  ci_includes_zero = ci_includes_zero
+)
+
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+Answers to questions posed in exercise08:
+
+### **Do the regression coefficients differ among groups?**
+
+Yes, the regression coefficients are different among groups. 
+
+**What is it that you need to permute?**
+
+We need to permute the ECV values while keeping group size the same. This breaks the real relationship between ECV and social group size, allowing us to create a null distribution of slope values that show what we would expect if there were no actual relationship.
+
+### **What is the p-value associated with your original slope coefficient?**
+
+Original p-value: 7.26
+
+P-value after permutation: 0
+
+### **Do these CIs suggest that your slope coefficient is different from zero?**
+
+Yes, the slope coefficient is significantly different from zero. There is a real relationship between social group size and brain size, and the effect is unlikely to be due to random chance.
